@@ -1,15 +1,18 @@
 # Railway deployment config for the backend service. Root Directory for
 # this service must be set to "backend" in the Railway dashboard (Settings
-# > Root Directory) so Railway finds this file and the app/ package.
+# > Root Directory) so Railway's builder finds this file and the app/
+# package, instead of scanning the repo root (which has no Python project
+# directly in it -- backend/ and frontend/ are siblings there).
 #
-# Nixpacks auto-detects `uv` from uv.lock and runs `uv sync` at build time.
-# The start command is explicit because Nixpacks can't guess it on its own
-# (the entry point is app.main:app inside app/, not a top-level script) --
-# most importantly, $PORT must come from Railway's env var, not a
-# hardcoded port, since Railway assigns it dynamically per deploy.
-
-[build]
-builder = "NIXPACKS"
+# No [build] section / no explicit builder -- Railway's current default
+# builder (Railpack as of 2026) auto-detects `uv` from uv.lock and runs
+# `uv sync` on its own once it's looking at the right directory; pinning
+# an older builder explicitly is more likely to fall out of sync with
+# Railway's own tooling than to help. The start command below is what
+# actually matters and is respected by any builder: Railway can't guess
+# it on its own (the entry point is app.main:app inside app/, not a
+# top-level script), and $PORT must come from Railway's dynamically
+# assigned env var, not a hardcoded port.
 
 [deploy]
 startCommand = "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"
