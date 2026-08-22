@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Twilio Test Caller</title>
+<script src="https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.3/dist/twilio.min.js"></script>
+<style>
+  :root { --bg: #f8fafc; --card: #fff; --border: #e2e8f0; --text: #0f172a; --muted: #64748b; --green: #10b981; --red: #ef4444; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 2rem 1rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 1rem; padding: 1.5rem; text-align: center; }
+  h1 { font-size: 1.25rem; margin: 0 0 0.25rem; }
+  p.muted { color: var(--muted); font-size: 0.85rem; margin: 0 0 1.5rem; }
+  .status { font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem; }
+  .status .dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 999px; background: #cbd5e1; margin-right: 0.4rem; }
+  .status.ready .dot { background: var(--green); }
+  .status.oncall .dot { background: var(--green); animation: pulse 1.2s infinite; }
+  .status.error .dot { background: var(--red); }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  button { width: 100%; padding: 0.75rem; border-radius: 999px; border: none; font-weight: 500; font-size: 0.95rem; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-call { background: var(--green); color: white; }
+  .btn-hangup { background: var(--red); color: white; }
+  .btn-key { background: #f59e0b; color: white; margin-bottom: 0.5rem; }
+  .error-box { font-size: 0.8rem; color: #b91c1c; background: #fef2f2; border-radius: 0.5rem; padding: 0.5rem 0.75rem; margin-bottom: 1rem; text-align: left; }
+  .log-box { margin-top: 1.5rem; text-align: left; height: 8rem; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 0.7rem; color: var(--muted); background: #f8fafc; border-radius: 0.5rem; padding: 0.5rem; }
+  nav.top-nav { max-width: 480px; margin: 0 auto; padding: 1.25rem 1rem 0; display: flex; gap: 1rem; font-size: 0.85rem; }
+  nav.top-nav a { color: var(--muted); text-decoration: none; }
+  nav.top-nav a.active { color: var(--text); font-weight: 600; }
+  nav.top-nav a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<nav class="top-nav">
+  <a href="/">Home</a>
+  <a href="/web-testing">Web Testing</a>
+  <a href="/twilio-test" class="active">Twilio Test Caller</a>
+  <a href="/settings-ui">Settings</a>
+</nav>
+<div class="wrap">
+  <div class="card">
+    <h1>Twilio Test Caller</h1>
+    <p class="muted">Places a WebRTC call through Twilio into your own number, bridging into the same /twilio/voice inbound path a real phone call would use.</p>
+
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">Connecting to Twilio...</span></div>
+    <div id="errorBox" class="error-box" style="display:none;"></div>
+
+    <button id="callBtn" class="btn-call" disabled>Call my Twilio number</button>
+    <button id="keyBtn" class="btn-key" style="display:none;">Press 1 (skip trial-account message)</button>
+    <button id="hangupBtn" class="btn-hangup" style="display:none;">Hang Up</button>
+
+    <div class="log-box" id="log"></div>
+  </div>
+</div>
+
+<script>
+const statusEl = document.getElementById("status");
+const statusText = document.getElementById("statusText");
+const errorBox = document.getElementById("errorBox");
+const callBtn = document.getElementById("callBtn");
+const keyBtn = document.getElementById("keyBtn");
+const hangupBtn = document.getElementById("hangupBtn");
+const log = document.getElementById("log");
+
+let device = null;
+let activeCall = null;
+
+function logLine(msg) {
+  const line = document.createElement("div");
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setStatus(cls, text) {
+  statusEl.className = "status " + cls;
+  statusText.textContent = text;
+}
+
+function showError(msg) {
+  errorBox.style.display = "block";
+  errorBox.textContent = msg;
+}
+
+async function init() {
+  try {
+    const res = await fetch("/twilio/access-token", { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || "Failed to get access token");
+
+    device = new Twilio.Device(body.token, { logLevel: "warn" });
+
+    device.on("registered", () => {
+      logLine("device registered");
+      setStatus("ready", "Ready to call");
+      callBtn.disabled = false;
+    });
+
+    device.on("error", (e) => {
+      logLine(`device error: ${e.message}`);
+      setStatus("error", "Error");
+      showError(e.message);
+    });
+
+    device.on("tokenWillExpire", async () => {
+      const r = await fetch("/twilio/access-token", { method: "POST" });
+      const b = await r.json();
+      device.updateToken(b.token);
+    });
+
+    await device.register();
+  } catch (e) {
+    setStatus("error", "Setup failed");
+    showError(e.message || String(e));
+    logLine(`init failed: ${e.message || e}`);
+  }
+}
+
+callBtn.addEventListener("click", async () => {
+  errorBox.style.display = "none";
+  callBtn.disabled = true;
+  setStatus("oncall", "Calling...");
+  logLine("placing call...");
+
+  try {
+    activeCall = await device.connect();
+
+    activeCall.on("accept", () => {
+      setStatus("oncall", "On call");
+      logLine("call connected");
+      hangupBtn.style.display = "block";
+
+      // Trial Twilio accounts prepend a "press any key to continue"
+      // message on every outbound call (even to a number you own) before
+      // bridging in -- send a DTMF digit automatically so the call
+      // doesn't just sit there, and keep the button visible in case the
+      // timing is off and it needs a manual retry.
+      keyBtn.style.display = "block";
+      setTimeout(() => {
+        if (activeCall) {
+          activeCall.sendDigits("1");
+          logLine("auto-sent DTMF 1 (trial-account prompt)");
+        }
+      }, 2500);
+    });
+
+    activeCall.on("disconnect", () => {
+      setStatus("ready", "Ready to call");
+      logLine("call ended");
+      hangupBtn.style.display = "none";
+      keyBtn.style.display = "none";
+      callBtn.disabled = false;
+      activeCall = null;
+    });
+
+    activeCall.on("cancel", () => {
+      setStatus("ready", "Ready to call");
+      logLine("call canceled");
+      hangupBtn.style.display = "none";
+      keyBtn.style.display = "none";
+      callBtn.disabled = false;
+    });
+
+    activeCall.on("error", (e) => {
+      logLine(`call error: ${e.message}`);
+      showError(e.message);
+    });
+  } catch (e) {
+    setStatus("ready", "Ready to call");
+    callBtn.disabled = false;
+    showError(e.message || String(e));
+  }
+});
+
+hangupBtn.addEventListener("click", () => {
+  activeCall?.disconnect();
+});
+
+keyBtn.addEventListener("click", () => {
+  if (!activeCall) return;
+  activeCall.sendDigits("1");
+  logLine("sent DTMF 1 (manual)");
+});
+
+init();
+</script>
+</body>
+</html>

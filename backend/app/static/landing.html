@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voice AI Agent</title>
+<style>
+  :root { --bg: #f8fafc; --card: #fff; --border: #e2e8f0; --text: #0f172a; --muted: #64748b; --muted-2: #94a3b8; --green: #10b981; --amber: #f59e0b; --accent: #0f172a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .layout { max-width: 900px; margin: 0 auto; padding: 3rem 1.5rem; }
+  .header { text-align: center; margin-bottom: 2.5rem; }
+  .header .badge { width: 3.5rem; height: 3.5rem; border-radius: 1rem; background: var(--accent); color: white; font-size: 1.5rem; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 0.4rem; }
+  p.muted { color: var(--muted); font-size: 0.9rem; margin: 0; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+  @media (max-width: 780px) { .tiles { grid-template-columns: 1fr; } }
+  a.tile { display: block; background: var(--card); border: 1px solid var(--border); border-radius: 1rem; padding: 1.5rem; text-decoration: none; color: inherit; transition: border-color 0.15s, transform 0.15s; }
+  a.tile:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .tile .icon { font-size: 1.6rem; margin-bottom: 0.75rem; }
+  .tile h2 { font-size: 1.05rem; margin: 0 0 0.4rem; }
+  .tile p { font-size: 0.82rem; color: var(--muted); line-height: 1.5; margin: 0 0 0.85rem; }
+  .status-line { font-size: 0.72rem; font-weight: 600; display: flex; align-items: center; gap: 0.35rem; }
+  .status-line .dot { width: 0.4rem; height: 0.4rem; border-radius: 999px; background: var(--muted-2); }
+  .status-line.ok { color: #047857; }
+  .status-line.ok .dot { background: var(--green); }
+  .status-line.warn { color: #b45309; }
+  .status-line.warn .dot { background: var(--amber); }
+  .footer-note { text-align: center; margin-top: 2rem; font-size: 0.78rem; color: var(--muted-2); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="header">
+    <div class="badge">&#127908;</div>
+    <h1>Voice AI Agent</h1>
+    <p class="muted">Patient Registration Agent -- pick where to start.</p>
+  </div>
+
+  <div class="tiles">
+    <a class="tile" href="/settings-ui">
+      <div class="icon">&#9881;&#65039;</div>
+      <h2>Configuration &amp; Setup</h2>
+      <p>Store your Gemini and Twilio credentials, get help &amp; how-to guidance, and find the exact webhook URL/instructions for the Twilio dashboard.</p>
+      <div class="status-line" id="statusConfig"><span class="dot"></span><span>Checking...</span></div>
+    </a>
+
+    <a class="tile" href="/web-testing">
+      <div class="icon">&#128266;</div>
+      <h2>Web Testing</h2>
+      <p>Talk to the agent right in your browser -- no phone, no Twilio account needed. Includes a live view of registered patients.</p>
+      <div class="status-line" id="statusWeb"><span class="dot"></span><span>Checking...</span></div>
+    </a>
+
+    <a class="tile" href="/twilio-test">
+      <div class="icon">&#128222;</div>
+      <h2>Twilio Testing</h2>
+      <p>Test the real Twilio phone path -- dial your number directly, or place a browser WebRTC call with no phone needed.</p>
+      <div class="status-line" id="statusTwilio"><span class="dot"></span><span>Checking...</span></div>
+    </a>
+  </div>
+
+  <p class="footer-note">Not sure where to start? Open <strong>Configuration &amp; Setup</strong> first.</p>
+</div>
+
+<script>
+fetch("/settings")
+  .then((res) => res.json())
+  .then((data) => {
+    const gemini = data.fields.GEMINI_API_KEY.set;
+    setStatus("statusConfig", gemini, gemini ? "Gemini key set" : "Gemini key needed");
+    setStatus("statusWeb", gemini, gemini ? "Ready to test" : "Needs Gemini key first");
+    setStatus("statusTwilio", data.twilio_configured, data.twilio_configured ? "Twilio configured" : "Twilio not configured");
+  })
+  .catch(() => {
+    ["statusConfig", "statusWeb", "statusTwilio"].forEach((id) => setStatus(id, false, "Backend unreachable"));
+  });
+
+function setStatus(id, ok, text) {
+  const el = document.getElementById(id);
+  el.className = "status-line " + (ok ? "ok" : "warn");
+  el.querySelector("span:last-child").textContent = text;
+}
+</script>
+</body>
+</html>

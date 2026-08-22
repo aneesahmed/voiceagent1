@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Settings -- Voice AI Agent</title>
+<style>
+  :root { --bg: #f8fafc; --card: #fff; --border: #e2e8f0; --text: #0f172a; --muted: #64748b; --muted-2: #94a3b8; --green: #10b981; --red: #ef4444; --amber: #f59e0b; --accent: #0f172a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .layout { max-width: 760px; margin: 0 auto; padding: 2rem 1rem; }
+  nav { display: flex; gap: 1rem; margin-bottom: 1.5rem; font-size: 0.85rem; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a.active { color: var(--text); font-weight: 600; }
+  nav a:hover { color: var(--text); }
+  h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+  p.muted { color: var(--muted); font-size: 0.85rem; margin: 0 0 1.5rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 1rem; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .card h2 { font-size: 1.05rem; margin: 0 0 0.25rem; }
+  .card p.section-muted { color: var(--muted); font-size: 0.8rem; margin: 0 0 1.25rem; }
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-size: 0.8rem; font-weight: 500; margin-bottom: 0.3rem; }
+  .field .desc { font-size: 0.72rem; color: var(--muted-2); margin-bottom: 0.35rem; }
+  .field input { width: 100%; padding: 0.55rem 0.7rem; border: 1px solid var(--border); border-radius: 0.5rem; font-size: 0.85rem; font-family: ui-monospace, monospace; }
+  .field .current { font-size: 0.72rem; color: var(--muted); margin-top: 0.3rem; }
+  .badge { display: inline-block; font-size: 0.65rem; font-weight: 600; border-radius: 999px; padding: 1px 7px; margin-left: 0.4rem; }
+  .badge.set { color: #047857; background: #ecfdf5; }
+  .badge.unset { color: #b45309; background: #fffbeb; }
+  button { padding: 0.6rem 1.1rem; border-radius: 0.6rem; border: none; font-weight: 500; font-size: 0.85rem; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-secondary { background: #f1f5f9; color: var(--text); }
+  .row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .save-msg { font-size: 0.8rem; margin-left: 0.5rem; }
+  .save-msg.ok { color: #047857; }
+  .save-msg.err { color: #b91c1c; }
+  .webhook-box { background: #f8fafc; border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; font-family: ui-monospace, monospace; font-size: 0.8rem; word-break: break-all; margin: 0.75rem 0; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+  .steps { font-size: 0.82rem; color: var(--muted); line-height: 1.7; padding-left: 1.1rem; margin: 0.5rem 0 0; }
+  .status-line { font-size: 0.8rem; margin-top: 0.5rem; }
+  .status-line.ok { color: #047857; }
+  .status-line.warn { color: #b45309; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav>
+    <a href="/">Home</a>
+    <a href="/web-testing">Web Testing</a>
+    <a href="/twilio-test">Twilio Test Caller</a>
+    <a href="/settings-ui" class="active">Settings</a>
+  </nav>
+
+  <h1>Settings</h1>
+  <p class="muted">Credentials saved here update immediately and persist to backend/.env -- no restart needed.</p>
+
+  <div class="card">
+    <h2>Getting started</h2>
+    <ol class="steps">
+      <li>Get a Gemini API key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and paste it below -- this is the only thing required to use <a href="/web-testing">Web Testing</a>.</li>
+      <li>Everything else on this page (Twilio) is optional -- only needed if you want a real phone number, or the browser-based <a href="/twilio-test">Twilio Testing</a> page.</li>
+      <li>For Twilio: create a free trial account at <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener">twilio.com/try-twilio</a>, buy a U.S. number, and grab the Account SID + Auth Token from your Twilio console's home page.</li>
+      <li>Run a public tunnel to this backend (e.g. a Cloudflare quick tunnel: <code>cloudflared tunnel --url http://localhost:8001</code>, no account needed) and open this Settings page <em>through that tunnel URL</em> so the webhook URL below is detected correctly.</li>
+      <li>Paste the webhook URL shown below into your Twilio number's Voice configuration -- see the exact steps under "Real Call Settings" below.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Web Testing (core functionality)</h2>
+    <p class="section-muted">Required for chat, speech-to-text, and text-to-speech -- both the browser call page and any Twilio call depend on this.</p>
+    <div id="coreFields"></div>
+  </div>
+
+  <div class="card">
+    <h2>Real Call Settings (Twilio)</h2>
+    <p class="section-muted">Optional -- only needed to connect a real phone number or use the browser WebRTC test caller.</p>
+    <div id="twilioFields"></div>
+
+    <div id="webhookSection" style="margin-top: 1.5rem; display:none;">
+      <div class="row" style="justify-content: space-between;">
+        <strong style="font-size: 0.85rem;">Voice webhook URL</strong>
+        <span id="twilioConfiguredBadge"></span>
+      </div>
+      <div class="webhook-box">
+        <span id="webhookUrl"></span>
+        <button class="btn-secondary" id="copyWebhookBtn" style="flex-shrink:0;">Copy</button>
+      </div>
+      <ol class="steps">
+        <li>Twilio Console &rarr; Phone Numbers &rarr; Manage &rarr; Active Numbers &rarr; click your number</li>
+        <li>Under Voice Configuration, set "A call comes in" to the URL above, method <strong>HTTP POST</strong></li>
+        <li>Save, then call your Twilio number to test</li>
+      </ol>
+    </div>
+
+    <div style="margin-top: 1.5rem;">
+      <div class="row" style="justify-content: space-between;">
+        <strong style="font-size: 0.85rem;">Browser WebRTC test caller</strong>
+        <span id="clientCallingBadge"></span>
+      </div>
+      <p class="section-muted" style="margin-top:0.35rem;">No phone needed to test Twilio -- creates/updates the TwiML App the <a href="/twilio-test">browser test caller</a> dials into.</p>
+      <button class="btn-secondary" id="setupTwimlBtn">Create / Update TwiML App</button>
+      <div id="twimlStatus" class="status-line"></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="btn-primary" id="saveBtn">Save Changes</button>
+    <span id="saveMsg" class="save-msg"></span>
+  </div>
+</div>
+
+<script>
+const API = "";
+let currentFields = {};
+const pendingEdits = {};
+
+function fieldRow(name, info) {
+  const badge = info.set
+    ? '<span class="badge set">SET</span>'
+    : '<span class="badge unset">NOT SET</span>';
+  const current = info.secret
+    ? (info.preview ? `Current: ${info.preview}` : "Not set")
+    : (info.value ? `Current: ${info.value}` : "Not set");
+  return `
+    <div class="field">
+      <label>${name}${badge}</label>
+      <div class="desc">${info.description}</div>
+      <input type="${info.secret ? 'password' : 'text'}" data-field="${name}"
+             placeholder="${info.secret ? 'Enter a new value to replace it' : (info.value || '')}" />
+      <div class="current">${current}</div>
+    </div>`;
+}
+
+function render(data) {
+  currentFields = data.fields;
+  const coreNames = ["GEMINI_API_KEY"];
+  const twilioNames = Object.keys(data.fields).filter((n) => !coreNames.includes(n));
+
+  document.getElementById("coreFields").innerHTML = coreNames.map((n) => fieldRow(n, data.fields[n])).join("");
+  document.getElementById("twilioFields").innerHTML = twilioNames.map((n) => fieldRow(n, data.fields[n])).join("");
+
+  document.querySelectorAll("input[data-field]").forEach((input) => {
+    input.addEventListener("input", () => {
+      pendingEdits[input.dataset.field] = input.value;
+    });
+  });
+
+  const webhookSection = document.getElementById("webhookSection");
+  const configuredBadge = document.getElementById("twilioConfiguredBadge");
+  if (data.voice_webhook_url) {
+    webhookSection.style.display = "block";
+    document.getElementById("webhookUrl").textContent = data.voice_webhook_url;
+    configuredBadge.innerHTML = data.twilio_configured
+      ? '<span class="badge set">CONFIGURED</span>'
+      : '<span class="badge unset">INCOMPLETE</span>';
+  } else {
+    webhookSection.style.display = "none";
+  }
+
+  document.getElementById("clientCallingBadge").innerHTML = data.twilio_client_calling_configured
+    ? '<span class="badge set">READY</span>'
+    : '<span class="badge unset">NOT SET UP</span>';
+}
+
+async function load() {
+  const res = await fetch(`${API}/settings`);
+  const data = await res.json();
+  render(data);
+}
+
+document.getElementById("copyWebhookBtn").addEventListener("click", () => {
+  const text = document.getElementById("webhookUrl").textContent;
+  navigator.clipboard.writeText(text);
+  const btn = document.getElementById("copyWebhookBtn");
+  const original = btn.textContent;
+  btn.textContent = "Copied!";
+  setTimeout(() => (btn.textContent = original), 1500);
+});
+
+document.getElementById("saveBtn").addEventListener("click", async () => {
+  const saveMsg = document.getElementById("saveMsg");
+  const values = {};
+  for (const [key, value] of Object.entries(pendingEdits)) {
+    if (value.trim() !== "") values[key] = value.trim();
+  }
+  if (Object.keys(values).length === 0) {
+    saveMsg.className = "save-msg err";
+    saveMsg.textContent = "No changes to save.";
+    return;
+  }
+  saveMsg.className = "save-msg";
+  saveMsg.textContent = "Saving...";
+  try {
+    const res = await fetch(`${API}/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Save failed");
+    render(data);
+    Object.keys(pendingEdits).forEach((k) => delete pendingEdits[k]);
+    saveMsg.className = "save-msg ok";
+    saveMsg.textContent = "Saved -- takes effect immediately, no restart needed.";
+  } catch (e) {
+    saveMsg.className = "save-msg err";
+    saveMsg.textContent = e.message || String(e);
+  }
+});
+
+document.getElementById("setupTwimlBtn").addEventListener("click", async () => {
+  const status = document.getElementById("twimlStatus");
+  status.className = "status-line";
+  status.textContent = "Creating/updating TwiML App...";
+  try {
+    const res = await fetch(`${API}/settings/setup-twiml-app`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Failed");
+    status.className = "status-line ok";
+    status.textContent = `Ready -- TwiML App ${data.twiml_app_sid}`;
+    load();
+  } catch (e) {
+    status.className = "status-line warn";
+    status.textContent = e.message || String(e);
+  }
+});
+
+load();
+</script>
+</body>
+</html>

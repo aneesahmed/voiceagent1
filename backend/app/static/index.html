@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voice AI Agent -- Patient Registration</title>
+<style>
+  :root {
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --muted: #64748b;
+    --muted-2: #94a3b8;
+    --accent: #0f172a;
+    --green: #10b981;
+    --red: #ef4444;
+    --amber: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .layout {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    padding: 1rem;
+  }
+  .sticky { position: sticky; top: 2rem; max-height: calc(100vh - 4rem); display: flex; flex-direction: column; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin: 0; }
+  h2 { font-size: 0.875rem; font-weight: 600; margin: 0; }
+  .muted { color: var(--muted); }
+  .muted-sm { color: var(--muted); font-size: 0.75rem; }
+  .center { text-align: center; }
+  .header-badge {
+    width: 3.5rem; height: 3.5rem; border-radius: 1rem;
+    background: var(--accent); color: white; font-size: 1.5rem;
+    display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1rem;
+  }
+  .call-card { text-align: center; padding: 2rem; }
+  .status-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem; }
+  .dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: var(--muted-2); }
+  .dot.listening { background: var(--green); }
+  .dot.speaking, .dot.processing { background: var(--amber); }
+  .dot.error { background: var(--red); }
+  .meter-wrap { margin-bottom: 1.5rem; text-align: left; }
+  .meter-labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted-2); margin-bottom: 0.25rem; }
+  .meter-bg { width: 100%; height: 0.5rem; border-radius: 999px; background: #f1f5f9; overflow: hidden; }
+  .meter-fill { height: 100%; background: var(--green); width: 0%; transition: width 75ms; }
+  .btn { width: 100%; padding: 0.75rem; border-radius: 999px; border: none; font-weight: 500; cursor: pointer; margin-top: 0.5rem; font-size: 0.95rem; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-start { background: var(--green); color: white; }
+  .btn-start:hover:not(:disabled) { background: #059669; }
+  .btn-end { background: var(--red); color: white; }
+  .btn-end:hover { background: #dc2626; }
+  .btn-turn { background: var(--accent); color: white; }
+  .btn-turn:hover { background: #1e293b; }
+  .btn-ghost { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.85rem; padding: 0; }
+  .error-box { font-size: 0.85rem; color: #b91c1c; background: #fef2f2; border-radius: 0.5rem; padding: 0.5rem 0.75rem; margin-bottom: 1rem; }
+  .log-box { height: 10rem; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 0.7rem; color: var(--muted); }
+  .log-box div { padding: 1px 0; }
+  ol.steps { padding: 0; margin: 0; list-style: none; }
+  ol.steps li { display: flex; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem; }
+  ol.steps li span.n { color: var(--muted-2); }
+  .section-gap { margin-top: 1.5rem; }
+  .patient-row { border: 1px solid #f1f5f9; border-radius: 0.75rem; overflow: hidden; margin-bottom: 0.5rem; }
+  .patient-row button { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; text-align: left; font-size: 0.8rem; font-weight: 500; }
+  .patient-row button:hover { background: #f8fafc; }
+  .patient-detail { padding: 0 0.75rem 0.75rem; font-size: 0.7rem; color: var(--muted); }
+  .patient-detail .row { display: flex; justify-content: space-between; gap: 0.5rem; padding: 2px 0; }
+  .patient-detail .row dt { color: var(--muted-2); white-space: nowrap; }
+  .patient-detail .row dd { margin: 0; text-align: right; }
+  .refresh-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.85rem; }
+  .panel-head { display: flex; justify-content: space-between; align-items: start; gap: 0.5rem; margin-bottom: 0.75rem; }
+  nav.top-nav { max-width: 1200px; margin: 0 auto; padding: 1.25rem 1rem 0; display: flex; gap: 1rem; font-size: 0.85rem; }
+  nav.top-nav a { color: var(--muted-2); text-decoration: none; }
+  nav.top-nav a.active { color: var(--text); font-weight: 600; }
+  nav.top-nav a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<nav class="top-nav">
+  <a href="/">Home</a>
+  <a href="/web-testing" class="active">Web Testing</a>
+  <a href="/twilio-test">Twilio Test Caller</a>
+  <a href="/settings-ui">Settings</a>
+</nav>
+<div class="layout">
+
+  <!-- Patients panel -->
+  <aside class="card sticky">
+    <div class="panel-head">
+      <div>
+        <h2>Registered Patients</h2>
+        <p class="muted-sm" style="margin: 2px 0 0;">Live view of what the voice agent has saved.</p>
+      </div>
+      <button class="refresh-btn" id="refreshPatients" title="Refresh">&#10227;</button>
+    </div>
+    <div id="patientsError" class="error-box" style="display:none;"></div>
+    <div id="patientsList" class="muted-sm">Loading&hellip;</div>
+  </aside>
+
+  <!-- Call panel -->
+  <main>
+    <div class="center" style="margin-bottom: 2rem;">
+      <div class="header-badge">&#127908;</div>
+      <h1>Voice AI Agent</h1>
+      <p class="muted" style="margin-top: 0.25rem;" id="personaLabel">Patient Registration Agent</p>
+    </div>
+
+    <div class="card call-card">
+      <div class="status-row">
+        <span class="dot" id="statusDot"></span>
+        <span class="muted-sm" id="statusLabel">Not connected</span>
+      </div>
+
+      <div class="meter-wrap" id="meterWrap" style="display:none;">
+        <div class="meter-labels">
+          <span>Mic level</span>
+          <span id="meterCaption">sending to backend</span>
+        </div>
+        <div class="meter-bg"><div class="meter-fill" id="meterFill"></div></div>
+      </div>
+
+      <div id="callError" class="error-box" style="display:none;"></div>
+
+      <div id="idleControls">
+        <div style="text-align: left; margin-bottom: 0.75rem;">
+          <label for="callerNumberInput" class="muted-sm" style="display:block; margin-bottom: 0.25rem;">
+            Your phone number (mimics Caller ID / ANI on a real phone call)
+          </label>
+          <input
+            id="callerNumberInput"
+            type="tel"
+            value="5125550100"
+            placeholder="(555) 123-4567"
+            style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:0.5rem; font-size:0.9rem;"
+          />
+          <p class="muted-sm" style="margin-top: 0.25rem;">Default test number -- change it or clear it if you want.</p>
+        </div>
+        <button class="btn btn-start" id="startBtn">Start Call</button>
+      </div>
+      <div id="activeControls" style="display:none;">
+        <button class="btn btn-turn" id="turnBtn" style="display:none;">I'm Done Talking</button>
+        <button class="btn btn-end" id="endBtn">End Call</button>
+      </div>
+
+      <p class="muted-sm" style="margin-top: 1rem;">Mic access required. Chrome or Edge recommended.</p>
+    </div>
+
+    <div class="card section-gap" id="logCard" style="display:none;">
+      <h2 style="text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.5rem; font-size: 0.7rem;">Call log</h2>
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2 style="margin-bottom: 0.75rem;">How it works</h2>
+      <ol class="steps">
+        <li><span class="n">1.</span> Click <strong>Start Call</strong> and allow microphone access.</li>
+        <li><span class="n">2.</span> The agent greets you first -- wait for it to finish, then just talk naturally. It'll reply once you pause, or click "I'm Done Talking" to skip the wait.</li>
+        <li><span class="n">3.</span> You can speak over the assistant to interrupt it while it's greeting or replying.</li>
+        <li><span class="n">4.</span> Give your name, date of birth, and contact info to register as a new patient.</li>
+      </ol>
+    </div>
+  </main>
+
+</div>
+
+<script>
+// Mirrors frontend/src/CallAdapter.ts's protocol/thresholds exactly (see
+// CLAUDE.md decision #6/#9) -- this page exists so the agent can be tested
+// over the browser without depending on the separate npm/Vite toolchain.
+const TARGET_SAMPLE_RATE = 8000;
+const SILENCE_RMS_THRESHOLD = 0.02;
+const SILENCE_DURATION_MS = 1000;
+const BARGE_IN_DURATION_MS = 300;
+const PERSONA = "patient_intake";
+
+function downsampleTo8kHz(input, inputSampleRate) {
+  if (inputSampleRate === TARGET_SAMPLE_RATE) return input;
+  const ratio = inputSampleRate / TARGET_SAMPLE_RATE;
+  const outputLength = Math.floor(input.length / ratio);
+  const output = new Float32Array(outputLength);
+  for (let i = 0; i < outputLength; i++) {
+    const srcIndex = i * ratio;
+    const idxLow = Math.floor(srcIndex);
+    const idxHigh = Math.min(idxLow + 1, input.length - 1);
+    const frac = srcIndex - idxLow;
+    output[i] = input[idxLow] * (1 - frac) + input[idxHigh] * frac;
+  }
+  return output;
+}
+
+function floatTo16BitPCM(input) {
+  const output = new Int16Array(input.length);
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    output[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return output;
+}
+
+function computeRMS(input) {
+  let sum = 0;
+  for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+  return Math.sqrt(sum / input.length);
+}
+
+class CallAdapter {
+  constructor(callbacks) {
+    this.callbacks = callbacks;
+    this.status = "idle";
+    this.ws = null;
+    this.audioContext = null;
+    this.micStream = null;
+    this.sourceNode = null;
+    this.processor = null;
+    this.hasSpoken = false;
+    this.silenceStartedAt = null;
+    this.bargeInStartedAt = null;
+    this.playbackChunks = [];
+    this.fillerChunks = [];
+    this.receivingFiller = false;
+    this.playingFiller = false;
+    this.currentSource = null;
+    this.pendingPlayback = null;
+  }
+
+  async startCall(wsUrl) {
+    this.setStatus("connecting");
+    this.debug("connecting...");
+    try {
+      this.micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch {
+      this.callbacks.onError("Microphone access denied.");
+      this.debug("microphone access denied");
+      this.setStatus("error");
+      return;
+    }
+
+    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    this.sourceNode = this.audioContext.createMediaStreamSource(this.micStream);
+    this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+    this.processor.onaudioprocess = (e) => this.handleAudioProcess(e);
+    this.sourceNode.connect(this.processor);
+    this.processor.connect(this.audioContext.destination);
+
+    this.ws = new WebSocket(wsUrl);
+    this.ws.binaryType = "arraybuffer";
+
+    // Deliberately NOT setting status to "listening" here -- the server
+    // greets first now (see CLAUDE.md decision #26), and the mic pipeline
+    // forwards every frame unconditionally while status is "listening"
+    // (no RMS gating, unlike the barge-in path), so switching too early
+    // would let the first stray mic frame interrupt the greeting before
+    // it even starts. Status stays "connecting" until the greeting's
+    // audio actually starts arriving (playAudio sets "speaking"); when it
+    // ends, resumeListening() transitions to "listening" normally.
+    this.ws.onopen = () => { this.debug("connected, waiting for greeting"); };
+    this.ws.onmessage = (e) => this.handleServerMessage(e);
+    this.ws.onerror = () => { this.callbacks.onError("Connection error."); this.debug("websocket error"); this.setStatus("error"); };
+    this.ws.onclose = () => { this.debug("connection closed"); if (this.status !== "ended") this.setStatus("ended"); };
+  }
+
+  endCall() {
+    this.debug("call ended");
+    this.setStatus("ended");
+    this.currentSource?.stop();
+    this.currentSource = null;
+    this.ws?.close();
+    this.ws = null;
+    this.processor?.disconnect();
+    this.sourceNode?.disconnect();
+    this.processor = null;
+    this.sourceNode = null;
+    this.micStream?.getTracks().forEach((t) => t.stop());
+    this.micStream = null;
+    this.audioContext?.close();
+    this.audioContext = null;
+    this.playbackChunks = [];
+    this.fillerChunks = [];
+    this.receivingFiller = false;
+    this.playingFiller = false;
+    this.pendingPlayback = null;
+    this.hasSpoken = false;
+    this.silenceStartedAt = null;
+    this.bargeInStartedAt = null;
+  }
+
+  endTurn() {
+    if (this.status !== "listening") return;
+    this.debug("caller ended turn manually");
+    this.finishTurn();
+  }
+
+  setStatus(status) { this.status = status; this.callbacks.onStatusChange(status); }
+  debug(message) { this.callbacks.onDebug(message); }
+
+  handleAudioProcess(event) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const inputData = event.inputBuffer.getChannelData(0);
+    const rms = computeRMS(inputData);
+    this.callbacks.onAudioLevel(rms);
+    const now = performance.now();
+
+    if (this.status === "listening") {
+      const downsampled = downsampleTo8kHz(inputData, this.audioContext.sampleRate);
+      this.ws.send(floatTo16BitPCM(downsampled).buffer);
+      if (rms > SILENCE_RMS_THRESHOLD) {
+        this.hasSpoken = true;
+        this.silenceStartedAt = null;
+      } else if (this.hasSpoken) {
+        if (this.silenceStartedAt === null) this.silenceStartedAt = now;
+        else if (now - this.silenceStartedAt >= SILENCE_DURATION_MS) this.finishTurn();
+      }
+      return;
+    }
+
+    if (this.status === "processing" || this.status === "speaking") {
+      if (rms > SILENCE_RMS_THRESHOLD) {
+        if (this.bargeInStartedAt === null) this.bargeInStartedAt = now;
+        else if (now - this.bargeInStartedAt >= BARGE_IN_DURATION_MS) {
+          this.bargeIn();
+          const downsampled = downsampleTo8kHz(inputData, this.audioContext.sampleRate);
+          this.ws.send(floatTo16BitPCM(downsampled).buffer);
+        }
+      } else {
+        this.bargeInStartedAt = null;
+      }
+    }
+  }
+
+  bargeIn() {
+    this.debug("barge-in detected, interrupting assistant");
+    this.currentSource?.stop();
+    this.currentSource = null;
+    this.playbackChunks = [];
+    this.fillerChunks = [];
+    this.receivingFiller = false;
+    this.playingFiller = false;
+    this.pendingPlayback = null;
+    this.hasSpoken = true;
+    this.silenceStartedAt = null;
+    this.bargeInStartedAt = null;
+    this.setStatus("listening");
+  }
+
+  finishTurn() {
+    this.hasSpoken = false;
+    this.silenceStartedAt = null;
+    this.debug("silence detected, ending turn");
+    this.setStatus("processing");
+    this.ws?.send(JSON.stringify({ event: "end_of_turn" }));
+  }
+
+  handleServerMessage(event) {
+    if (typeof event.data === "string") {
+      const parsed = JSON.parse(event.data);
+      if (parsed.event === "transcript") {
+        this.debug(`you said: "${parsed.text}"`);
+      } else if (parsed.event === "filler_start") {
+        this.receivingFiller = true;
+        this.fillerChunks = [];
+      } else if (parsed.event === "filler_end") {
+        this.receivingFiller = false;
+        this.debug(`playing please-wait tone (${this.fillerChunks.length} chunks)`);
+        const chunks = this.fillerChunks;
+        this.fillerChunks = [];
+        this.playingFiller = true;
+        this.playAudio(chunks, () => { this.playingFiller = false; }, true);
+      } else if (parsed.event === "filler_stop") {
+        // Real audio is ready -- cut the tone short right now instead of
+        // making the caller wait out its full length (see CLAUDE.md
+        // decision #28). Only acts if the tone is actually what's
+        // currently playing, so this can't clobber a real reply.
+        if (this.playingFiller) {
+          this.debug("stopping please-wait tone -- real audio is ready");
+          this.currentSource?.stop();
+          this.currentSource = null;
+          this.playingFiller = false;
+          this.playNextPending();
+        }
+      } else if (parsed.event === "reply_end") {
+        this.debug(`reply received (${this.playbackChunks.length} chunks), playing back`);
+        const chunks = this.playbackChunks;
+        this.playbackChunks = [];
+        this.playAudio(chunks, () => this.resumeListening());
+      } else if (parsed.event === "interrupted") {
+        this.debug("server confirmed interruption");
+        this.playbackChunks = [];
+        this.fillerChunks = [];
+        this.receivingFiller = false;
+        this.playingFiller = false;
+        this.pendingPlayback = null;
+      } else if (parsed.event === "call_ended_by_agent") {
+        this.debug("agent ended the call");
+      } else if (parsed.event === "error") {
+        this.debug(`server error: ${parsed.message ?? "unknown"}`);
+        this.callbacks.onError(parsed.message ?? "Server error.");
+      }
+      return;
+    }
+    const chunk = new Int16Array(event.data);
+    if (this.receivingFiller) this.fillerChunks.push(chunk);
+    else this.playbackChunks.push(chunk);
+  }
+
+  playAudio(chunks, onEnded, isFiller = false) {
+    if (this.currentSource) { this.pendingPlayback = { chunks, onEnded, isFiller }; return; }
+    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+    if (totalLength === 0) { onEnded(); this.playNextPending(); return; }
+
+    // The filler tone means "still working", not "the agent is talking" --
+    // showing "Speaking" for it was misleading. "processing" (labeled
+    // "Thinking...") is what's already shown before the tone starts, so
+    // this just keeps that label instead of flipping it.
+    this.setStatus(isFiller ? "processing" : "speaking");
+    const merged = new Int16Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
+
+    const audioContext = this.audioContext;
+    const audioBuffer = audioContext.createBuffer(1, merged.length, TARGET_SAMPLE_RATE);
+    const channelData = audioBuffer.getChannelData(0);
+    for (let i = 0; i < merged.length; i++) channelData[i] = merged[i] / 0x8000;
+
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
+    source.onended = () => {
+      if (this.currentSource === source) {
+        this.currentSource = null;
+        onEnded();
+        this.playNextPending();
+      }
+    };
+    this.currentSource = source;
+    source.start();
+  }
+
+  playNextPending() {
+    if (!this.pendingPlayback) return;
+    const { chunks, onEnded, isFiller } = this.pendingPlayback;
+    this.pendingPlayback = null;
+    this.playAudio(chunks, onEnded, isFiller);
+  }
+
+  resumeListening() {
+    if (this.status === "ended" || this.status === "error") return;
+    this.debug("listening");
+    this.setStatus("listening");
+  }
+}
+
+// --- UI wiring ---
+const statusDot = document.getElementById("statusDot");
+const statusLabel = document.getElementById("statusLabel");
+const meterWrap = document.getElementById("meterWrap");
+const meterFill = document.getElementById("meterFill");
+const meterCaption = document.getElementById("meterCaption");
+const callError = document.getElementById("callError");
+const idleControls = document.getElementById("idleControls");
+const activeControls = document.getElementById("activeControls");
+const startBtn = document.getElementById("startBtn");
+const endBtn = document.getElementById("endBtn");
+const turnBtn = document.getElementById("turnBtn");
+const logCard = document.getElementById("logCard");
+const logBox = document.getElementById("logBox");
+
+const STATUS_LABEL = {
+  idle: "Not connected", connecting: "Connecting...", listening: "Listening",
+  processing: "Waiting...", speaking: "Speaking", error: "Error", ended: "Call ended",
+};
+
+let adapter = null;
+
+function setUiStatus(status) {
+  statusDot.className = "dot " + status;
+  statusLabel.textContent = STATUS_LABEL[status] || status;
+  const inCall = status !== "idle" && status !== "ended" && status !== "error";
+  idleControls.style.display = inCall ? "none" : "block";
+  activeControls.style.display = inCall ? "block" : "none";
+  turnBtn.style.display = status === "listening" ? "block" : "none";
+  meterWrap.style.display = inCall ? "block" : "none";
+  meterCaption.textContent = status === "listening" ? "sending to backend" : "muted (assistant's turn)";
+  meterFill.style.background = status === "listening" ? "#10b981" : "#cbd5e1";
+  if (status === "ended" || status === "idle") {
+    setTimeout(() => { if (adapter && (adapter.status === "ended")) refreshPatients(); }, 300);
+  }
+}
+
+function appendLog(message) {
+  logCard.style.display = "block";
+  const line = document.createElement("div");
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  logBox.appendChild(line);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+function showError(message) {
+  callError.style.display = "block";
+  callError.textContent = message;
+}
+
+const callerNumberInput = document.getElementById("callerNumberInput");
+
+startBtn.addEventListener("click", async () => {
+  callError.style.display = "none";
+  logBox.innerHTML = "";
+
+  const rawNumber = callerNumberInput.value.trim();
+  const digits = rawNumber.replace(/\D/g, "");
+  if (rawNumber && digits.length !== 10) {
+    showError("Enter a 10-digit phone number, or leave it blank to be asked for it on the call.");
+    return;
+  }
+
+  adapter = new CallAdapter({
+    onStatusChange: setUiStatus,
+    onError: showError,
+    onAudioLevel: (level) => { meterFill.style.width = Math.min(100, level * 100 * 5) + "%"; },
+    onDebug: appendLog,
+  });
+  const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const callerParam = digits ? `&caller_number=${digits}` : "";
+  const wsUrl = `${wsProtocol}//${location.host}/audio?persona=${PERSONA}${callerParam}`;
+  appendLog(digits ? `using caller ID: ${digits} (agent should confirm this number)` : "no caller ID entered -- agent will ask for your phone number");
+  await adapter.startCall(wsUrl);
+});
+
+endBtn.addEventListener("click", () => { adapter?.endCall(); });
+turnBtn.addEventListener("click", () => { adapter?.endTurn(); });
+
+// --- Patients panel ---
+const patientsList = document.getElementById("patientsList");
+const patientsError = document.getElementById("patientsError");
+const refreshPatientsBtn = document.getElementById("refreshPatients");
+
+function formatPhone(digits) {
+  return digits && digits.length === 10 ? `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}` : digits;
+}
+
+function renderPatientDetail(p) {
+  const rows = [
+    ["DOB", p.date_of_birth || "—"],
+    ["Gender", p.sex || "—"],
+    ["Phone", p.phone_number ? formatPhone(p.phone_number) : "—"],
+  ];
+  if (p.email) rows.push(["Email", p.email]);
+  const addressParts = [p.address_line_1, p.address_line_2, p.city, [p.state, p.zip_code].filter(Boolean).join(" ")].filter(Boolean);
+  if (addressParts.length > 0) rows.push(["Address", addressParts.join(", ")]);
+  if (p.insurance_provider) rows.push(["Insurance", p.insurance_provider + (p.insurance_member_id ? ` (${p.insurance_member_id})` : "")]);
+  if (p.preferred_language && p.preferred_language !== "English") rows.push(["Language", p.preferred_language]);
+  if (p.emergency_contact_name) rows.push(["Emergency contact", p.emergency_contact_name + (p.emergency_contact_phone ? ` -- ${formatPhone(p.emergency_contact_phone)}` : "")]);
+  rows.push(["Registered", new Date(p.created_at).toLocaleString()]);
+  return rows.map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${v}</dd></div>`).join("");
+}
+
+function refreshPatients() {
+  patientsError.style.display = "none";
+  fetch("/patients")
+    .then((res) => res.json())
+    .then((body) => {
+      if (body.error) throw new Error(typeof body.error === "string" ? body.error : "Request failed");
+      const patients = body.data;
+      if (patients.length === 0) {
+        patientsList.innerHTML = '<p class="muted-sm">No patients yet -- start a call and register one.</p>';
+        return;
+      }
+      patientsList.innerHTML = patients.map((p) => {
+        const name = (p.first_name || p.last_name)
+          ? `${p.first_name || "?"} ${p.last_name || ""}`.trim()
+          : formatPhone(p.phone_number) || "(no info yet)";
+        const badge = p.is_complete
+          ? ""
+          : '<span style="font-size:9px;font-weight:600;color:#b45309;background:#fffbeb;border-radius:999px;padding:1px 6px;margin-left:6px;">DRAFT</span>';
+        return `
+        <div class="patient-row">
+          <button onclick="document.getElementById('detail-${p.patient_id}').style.display = document.getElementById('detail-${p.patient_id}').style.display === 'none' ? 'block' : 'none'">
+            <span>${name}${badge}</span>
+          </button>
+          <dl class="patient-detail" id="detail-${p.patient_id}" style="display:none;">${renderPatientDetail(p)}</dl>
+        </div>
+      `;
+      }).join("");
+    })
+    .catch(() => {
+      patientsError.style.display = "block";
+      patientsError.textContent = "Couldn't reach the backend.";
+      patientsList.innerHTML = "";
+    });
+}
+
+refreshPatientsBtn.addEventListener("click", refreshPatients);
+refreshPatients();
+setUiStatus("idle");
+</script>
+</body>
+</html>

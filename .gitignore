@@ -1,0 +1,23 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local tunnel artifacts (Cloudflare quick tunnel, changes every restart)
+cloudflared.log
+cloudflared.pid
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Env files -- defense in depth beyond backend/.gitignore (never commit real secrets)
+.env
+.env.local
+*.env.local
