@@ -1,0 +1,19 @@
+# Railway deployment config for the backend service. Root Directory for
+# this service must be set to "backend" in the Railway dashboard (Settings
+# > Root Directory) so Railway finds this file and the app/ package.
+#
+# Nixpacks auto-detects `uv` from uv.lock and runs `uv sync` at build time.
+# The start command is explicit because Nixpacks can't guess it on its own
+# (the entry point is app.main:app inside app/, not a top-level script) --
+# most importantly, $PORT must come from Railway's env var, not a
+# hardcoded port, since Railway assigns it dynamically per deploy.
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

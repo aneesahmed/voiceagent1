@@ -156,19 +156,44 @@ a "press any key to continue" voice prompt to every outbound call
 (including this one) -- the page auto-sends that keypress a couple of
 seconds after connecting, with a manual button as a fallback.
 
-### Deploying (e.g. Google Cloud Run)
+### Deploying
 This app never needs to know its own public URL ahead of time.
 `app/request_utils.py` derives it from each incoming request's forwarded
-host/proto headers instead of a hardcoded `PUBLIC_BASE_URL` -- Cloud Run
-(and every tunnel used during development) terminates TLS in front of the
-app and forwards the real external host, so this is correct automatically
-and stays correct across revisions, redeploys, or a URL that only gets
-assigned after the first deploy. Practical effect: **leave
-`PUBLIC_BASE_URL` unset** in your Cloud Run service's environment
-variables; just set `GEMINI_API_KEY` and whichever `TWILIO_*` vars you
-need (or configure Twilio afterward from `/settings-ui`, same as local
-dev). See `CLAUDE.md` decision #23 for the full reasoning and how it was
-verified.
+host/proto headers instead of a hardcoded `PUBLIC_BASE_URL` -- any
+platform that terminates TLS in front of the app and forwards the real
+external host (Railway, Cloud Run, and every tunnel used during
+development all do this) gets this right automatically, and it stays
+correct across redeploys or a URL that only gets assigned after the first
+deploy. Practical effect: **leave `PUBLIC_BASE_URL` unset** on the
+deployment platform; just set `GEMINI_API_KEY` and whichever `TWILIO_*`
+vars you need (or configure Twilio afterward from `/settings-ui`, same as
+local dev). See `CLAUDE.md` decision #23 for the full reasoning and how
+it was verified.
+
+#### Railway
+1. **New Project → Deploy from GitHub repo**, select this repo.
+2. Service **Settings → Root Directory** → set to `backend` (this is a
+   monorepo -- see decision #3 -- Railway needs to know the Python
+   project lives in a subfolder, not the repo root).
+3. `backend/railway.toml` (already in the repo) tells Railway how to
+   build (Nixpacks auto-detects `uv` from `uv.lock`) and start the app,
+   binding to Railway's dynamically-assigned `$PORT` instead of a
+   hardcoded one.
+4. **Settings → Variables**: add `GEMINI_API_KEY` and the `TWILIO_*`
+   credentials you want configured immediately (or leave Twilio unset and
+   configure it later from `/settings-ui`, same as local dev). Leave
+   `PUBLIC_BASE_URL` unset (see above).
+5. **Add a Volume**: Settings → Volumes → New Volume, mount it at e.g.
+   `/data`, then set the `DB_PATH` variable to `/data/patients.db`.
+   **This step matters** -- Railway's container filesystem is otherwise
+   ephemeral, so without a Volume the patients database gets wiped on
+   every redeploy or restart, breaking the "data survives restarts"
+   requirement this project is otherwise built around (decision #20).
+6. Deploy. Railway gives you a `*.up.railway.app` URL -- open
+   `/settings-ui` through *that* URL to get the Twilio webhook URL to
+   paste into the Twilio console, and click "Create/Update TwiML App" if
+   you want the browser test caller working from the deployed instance
+   too.
 
 ## Environment variables
 

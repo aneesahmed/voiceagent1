@@ -815,6 +815,36 @@ voiceagent/
       mechanism than Twilio's server-side RMS detection on the raw PSTN
       stream, so this specific failure mode doesn't apply there.
 
+32. **Project moved to GitHub and prepped for Railway deployment
+    (2026-08-22).** Repo pushed to `github.com/aneesahmed/voiceagent1`
+    (merged with GitHub's own auto-created README/LICENSE/.gitignore from
+    repo creation -- kept this project's versions of the first two,
+    GitHub's LICENSE file, `--allow-unrelated-histories` merge since the
+    two initial commits shared no history).
+    - `backend/railway.toml` -- Railway build/deploy config. Explicit
+      `startCommand` binding to Railway's dynamically-assigned `$PORT`
+      (`uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT`) is the
+      one thing Nixpacks can't infer on its own (the entry point is
+      `app.main:app` inside `app/`, not a top-level script it would
+      auto-detect); Nixpacks does auto-detect `uv` itself from
+      `backend/uv.lock`. Also sets `healthcheckPath = "/health"` since
+      that endpoint already existed. Root Directory must be set to
+      `backend` in Railway's dashboard (this is a monorepo, decision #3)
+      for Railway to find this file at all.
+    - **Persistent storage flagged, not yet resolved**: Railway's
+      container filesystem is ephemeral by default, so the SQLite
+      database needs a Railway Volume mounted (e.g. at `/data`) with
+      `DB_PATH` pointed at it (`/data/patients.db`) -- otherwise every
+      redeploy/restart silently wipes patient data, directly undermining
+      decision #20's whole point. This requires action in Railway's
+      dashboard (Settings → Volumes) that only the account owner can do;
+      documented in README's new "Deploying → Railway" section as an
+      explicit numbered step, not left implicit.
+    - `PUBLIC_BASE_URL` guidance from decision #23 generalizes cleanly to
+      Railway too (same request-forwarding-header mechanism) -- README's
+      "Deploying" section was reworded from Cloud-Run-specific to
+      platform-general, with Railway now the concretely documented case.
+
 ## Environment / config
 
 `backend/.env` (gitignored, copy from `.env.example`):
