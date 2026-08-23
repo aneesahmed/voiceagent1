@@ -37,16 +37,21 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 # name -> (is_secret, description). Order here is the order the UI shows them in.
 FIELDS: dict[str, tuple[bool, str]] = {
     "GEMINI_API_KEY": (True, "Gemini API key (chat, speech-to-text, text-to-speech)"),
-    "TWILIO_ACCOUNT_SID": (False, "Twilio Account SID (starts with AC)"),
+    # Account SID/API Key SID aren't secrets in the sense of granting access
+    # on their own (Twilio's docs call them identifiers, not credentials),
+    # but masking them anyway keeps a screen-shared/screenshotted Settings
+    # page from casually exposing account-identifying values -- display-only,
+    # doesn't change what's actually stored or how Twilio calls authenticate.
+    "TWILIO_ACCOUNT_SID": (True, "Twilio Account SID (starts with AC)"),
     "TWILIO_AUTH_TOKEN": (True, "Twilio Auth Token (master secret, console.twilio.com account home)"),
-    "TWILIO_API_KEY_SID": (False, "Twilio API Key SID (starts with SK) -- for the browser test caller"),
+    "TWILIO_API_KEY_SID": (True, "Twilio API Key SID (starts with SK) -- for the browser test caller"),
     "TWILIO_API_KEY_SECRET": (True, "Twilio API Key Secret -- for the browser test caller"),
     "TWILIO_PHONE_NUMBER": (False, "Your Twilio phone number, E.164 format e.g. +14843652103"),
     "PUBLIC_BASE_URL": (
         False,
         "Optional override -- normally auto-detected from each request (works behind Cloud Run, any tunnel, etc). Only set this if that detection is ever wrong.",
     ),
-    "TWILIO_TWIML_APP_SID": (False, "TwiML App SID for the browser caller -- usually set by the button below, not by hand"),
+    "TWILIO_TWIML_APP_SID": (True, "TwiML App SID for the browser caller -- usually set by the button below, not by hand"),
 }
 
 
