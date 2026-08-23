@@ -178,14 +178,22 @@ async def media_stream(ws: WebSocket):
         await ws.send_text(json.dumps({"event": "media", "streamSid": stream_sid, "media": {"payload": payload}}))
 
     async def send_event(event: dict) -> None:
-        # Twilio's Media Streams protocol has no equivalent of our custom
-        # reply_end/interrupted signaling -- the caller just hears audio
-        # (or silence, if interrupted). Logging is enough here, except for
-        # call_ended_by_agent (the model used the end_call tool -- see
-        # chat_engine.py): closing this websocket ends the <Connect><Stream>
-        # verb, and since the TwiML has nothing after it, Twilio hangs up
-        # the actual PSTN call.
+        # send_frame streams a whole clip's frames to Twilio near-instantly
+        # (no real-time pacing server-side, see call_engine._stream_audio) --
+        # Twilio buffers and plays them back at real speed regardless of
+        # whether our server has since moved on. Without an explicit
+        # "clear" event, Twilio has no way to know we want it to stop
+        # playing what it already received: a caller would sit through the
+        # *entire* filler tone even once the real reply was ready, and
+        # barge-in would only stop us sending *more* audio, not stop what
+        # Twilio was already playing. "clear" is Twilio's Media Streams
+        # mechanism for exactly this -- discards any buffered/unplayed
+        # audio for this stream immediately. Mirrors what the browser
+        # transport gets for free via CallAdapter.ts's playingFiller flag +
+        # AudioBufferSourceNode.stop() (CLAUDE.md decision #28).
         logger.info("[%s] turn event: %s", call_id, event)
+        if event.get("event") in ("filler_stop", "interrupted") and stream_sid is not None:
+            await ws.send_text(json.dumps({"event": "clear", "streamSid": stream_sid}))
         if event.get("event") == "call_ended_by_agent":
             await ws.close(code=1000)
 
