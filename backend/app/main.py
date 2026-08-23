@@ -9,10 +9,7 @@ Endpoints:
                       continuously (even while the assistant is replying,
                       to support barge-in), sends
                       {"event": "end_of_turn"} when done speaking. Server
-                      first streams a short cached filler line (PCM16
-                      frames wrapped in {"event": "filler_start"} /
-                      {"event": "filler_end"}) while it works, then
-                      streams the real reply (PCM16 frames followed by
+                      streams the reply (PCM16 frames followed by
                       {"event": "reply_end"}), or {"event": "interrupted"}
                       if the caller barged in at any point.
 """
@@ -32,7 +29,6 @@ from pydantic import BaseModel
 from app.basic_auth_middleware import BasicAuthMiddleware
 from app.call_engine import greet, process_turn
 from app.chat_engine import ChatEngine
-from app.filler_audio import warm_cache as warm_filler_cache
 from app.integrations import twilio_client_calling, twilio_voice, whatsapp
 from app.kb_routes import router as kb_router
 from app.patients_db import init_db
@@ -52,18 +48,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("initializing patients database...")
     await asyncio.to_thread(init_db)
-    logger.info("warming filler audio cache...")
-    try:
-        await asyncio.to_thread(warm_filler_cache)
-    except Exception:
-        # Non-fatal: this is a latency optimization (a cached "one moment"
-        # line), not a hard dependency. A bad/expired GEMINI_API_KEY would
-        # otherwise crash the whole server at startup -- including the
-        # unrelated REST API and static UI -- over a TTS call that only
-        # matters mid-call. get_filler_audio() re-attempts synthesis on
-        # first use if the cache is empty; a real call will surface the
-        # same error there, caught per-turn by call_engine.process_turn.
-        logger.exception("failed to warm filler audio cache -- continuing without it")
     yield
 
 

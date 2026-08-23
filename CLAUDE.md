@@ -892,6 +892,58 @@ voiceagent/
       #32's `TWILIO_TWIML_APP_SID` -- a value only in the local `.env`
       does not exist on Railway until added there manually).
 
+34. **Removed the filler/hold-music cue entirely -- it was causing real
+    problems on Twilio calls, not just a latency nicety anymore
+    (2026-08-23).** Root cause diagnosed directly against the live Railway
+    deployment: `call_engine._stream_audio` streams a whole clip's frames
+    to the client near-instantly (no real-time pacing server-side, by
+    design -- see decision #28's original notes). The browser transport
+    compensates for this with real client-side logic
+    (`CallAdapter.ts`/`static/index.html`'s `currentSource.stop()` on
+    `filler_stop`), but the Twilio Media Streams integration never had an
+    equivalent -- Twilio just buffers and plays every frame it receives,
+    in order, at real speed, with no idea our server had moved on. That
+    meant every real phone call sat through the *entire* ~10s hold tone
+    before the greeting even started, and barge-in only stopped the
+    server sending *more* frames, never what Twilio had already buffered
+    -- confirmed by connecting directly to `/twilio/media-stream` and
+    counting frames sent before Gemini's response was even ready. A first
+    fix attempt added Twilio's `clear` event (discards buffered/unplayed
+    audio) on `filler_stop`/`interrupted`, which worked correctly when
+    tested directly -- but given the choice between maintaining two
+    diverging per-transport playback-control code paths (browser's
+    `AudioBufferSourceNode.stop()` vs. Twilio's `clear` event, each with
+    its own edge cases) just to cover a few seconds of LLM+TTS latency,
+    removing the filler mechanism outright was simpler and more reliable.
+    - `app/filler_audio.py` and `app/assets/hold_music.pcm` deleted
+      entirely (the module went through several iterations first -- TTS-
+      synthesized spoken phrases, a procedural flat drone, a procedural
+      piano melody, then a real user-supplied hold-music MP3 -- before
+      being removed altogether here).
+    - `call_engine.py`'s `greet()`/`process_turn()` no longer stream
+      opening/mid-turn filler audio or send `filler_start`/`filler_end`/
+      `filler_stop` events -- straight from transcribe/generate to
+      synthesize to stream, same as before the filler mechanism existed.
+      `_end_call_after_playback`, barge-in, and interrupt handling are
+      unchanged.
+    - `twilio_voice.py`'s `send_event` still sends Twilio's `clear` event,
+      now only on `interrupted` (genuine barge-in) -- still needed and
+      still correct, just no longer paired with `filler_stop` since that
+      event doesn't exist anymore.
+    - `main.py`'s `lifespan` no longer warms a filler cache at startup
+      (nothing to warm).
+    - Both browser transports (`app/static/index.html`,
+      `frontend/src/CallAdapter.ts`) had their filler-tracking state
+      (`fillerChunks`/`receivingFiller`/`playingFiller`, the `isFiller`
+      flag threaded through `playAudio`/`pendingPlayback`) removed
+      entirely -- `playAudio` always sets status `"speaking"` now, since
+      there's no other kind of audio it ever plays.
+    - Net effect: a caller now hears silence (not dead air with a tone,
+      just nothing) for however long the LLM+TTS round trip actually
+      takes, then the real reply -- simpler and more predictable than the
+      filler mechanism it replaces, at the cost of losing the "something
+      is happening" cue during a slow turn.
+
 ## Environment / config
 
 `backend/.env` (gitignored, copy from `.env.example`):
@@ -958,9 +1010,11 @@ pull code that predates that.
 - Twilio phone-call bridge and WhatsApp Business API webhook, both fully
   coded but **not configured** (no real Twilio/Meta credentials yet) --
   see decision #15 and the frontend's Integrations sidebar for setup steps.
-- Cached filler audio ("one moment...") plays during the transcribe/reply/
-  synthesize gap (decision #16), and a manual "I'm Done Talking" button
-  supplements silence-based turn detection (decision #17).
+- A manual "I'm Done Talking" button supplements silence-based turn
+  detection (decision #17). No filler/hold-music cue during the
+  transcribe/reply/synthesize gap -- that was built (decision #16),
+  iterated on several times, then removed entirely (decision #34) after
+  it caused real playback problems specifically on Twilio calls.
 
 **Not implemented:** every other persona on the roadmap (support, CRM,
 scheduling, etc. -- see `app/personas.py`), real KB retrieval/embeddings

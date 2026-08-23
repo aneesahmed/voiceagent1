@@ -68,11 +68,8 @@ export class CallAdapter {
   private silenceStartedAt: number | null = null;
   private bargeInStartedAt: number | null = null;
   private playbackChunks: Int16Array[] = [];
-  private fillerChunks: Int16Array[] = [];
-  private receivingFiller = false;
-  private playingFiller = false;
   private currentSource: AudioBufferSourceNode | null = null;
-  private pendingPlayback: { chunks: Int16Array[]; onEnded: () => void; isFiller: boolean } | null = null;
+  private pendingPlayback: { chunks: Int16Array[]; onEnded: () => void } | null = null;
 
   constructor(callbacks: CallAdapterCallbacks) {
     this.callbacks = callbacks;
@@ -164,9 +161,6 @@ export class CallAdapter {
     this.audioContext = null;
 
     this.playbackChunks = [];
-    this.fillerChunks = [];
-    this.receivingFiller = false;
-    this.playingFiller = false;
     this.pendingPlayback = null;
     this.hasSpoken = false;
     this.silenceStartedAt = null;
@@ -240,9 +234,6 @@ export class CallAdapter {
     this.currentSource?.stop();
     this.currentSource = null;
     this.playbackChunks = [];
-    this.fillerChunks = [];
-    this.receivingFiller = false;
-    this.playingFiller = false;
     this.pendingPlayback = null;
 
     this.hasSpoken = true;
@@ -266,38 +257,6 @@ export class CallAdapter {
 
       if (parsed.event === "transcript") {
         this.debug(`you said: "${parsed.text}"`);
-      } else if (parsed.event === "filler_start") {
-        this.receivingFiller = true;
-        this.fillerChunks = [];
-      } else if (parsed.event === "filler_end") {
-        this.receivingFiller = false;
-        this.debug(`playing please-wait tone (${this.fillerChunks.length} chunks)`);
-        const chunks = this.fillerChunks;
-        this.fillerChunks = [];
-        this.playingFiller = true;
-        // No status transition on natural completion -- the real reply
-        // keeps accumulating in the background and drives its own status
-        // change on reply_end. filler_stop (below) is what normally ends
-        // this, well before it would ever finish naturally.
-        this.playAudio(
-          chunks,
-          () => {
-            this.playingFiller = false;
-          },
-          true
-        );
-      } else if (parsed.event === "filler_stop") {
-        // Real audio is ready -- cut the tone short right now instead of
-        // making the caller wait out its full length (see CLAUDE.md
-        // decision #28). Only acts if the tone is actually what's
-        // currently playing, so this can't clobber a real reply.
-        if (this.playingFiller) {
-          this.debug("stopping please-wait tone -- real audio is ready");
-          this.currentSource?.stop();
-          this.currentSource = null;
-          this.playingFiller = false;
-          this.playNextPending();
-        }
       } else if (parsed.event === "reply_end") {
         this.debug(`reply received (${this.playbackChunks.length} chunks), playing back`);
         const chunks = this.playbackChunks;
@@ -306,9 +265,6 @@ export class CallAdapter {
       } else if (parsed.event === "interrupted") {
         this.debug("server confirmed interruption");
         this.playbackChunks = [];
-        this.fillerChunks = [];
-        this.receivingFiller = false;
-        this.playingFiller = false;
         this.pendingPlayback = null;
       } else if (parsed.event === "call_ended_by_agent") {
         this.debug("agent ended the call");
@@ -320,22 +276,17 @@ export class CallAdapter {
     }
 
     const chunk = new Int16Array(event.data as ArrayBuffer);
-    if (this.receivingFiller) {
-      this.fillerChunks.push(chunk);
-    } else {
-      this.playbackChunks.push(chunk);
-    }
+    this.playbackChunks.push(chunk);
   };
 
-  // Plays a batch of already-received PCM16 chunks (filler line or real
-  // reply) through the same interruptible AudioBufferSourceNode that
-  // bargeIn() knows how to stop -- callers don't need their own barge-in
-  // handling, it falls out of currentSource being generic. If something
-  // is already playing (e.g. the real reply arrives before the filler
-  // line finishes), this queues behind it instead of overlapping audio.
-  private playAudio(chunks: Int16Array[], onEnded: () => void, isFiller = false) {
+  // Plays a batch of already-received PCM16 reply chunks through the same
+  // interruptible AudioBufferSourceNode that bargeIn() knows how to stop --
+  // callers don't need their own barge-in handling, it falls out of
+  // currentSource being generic. If something is already playing, this
+  // queues behind it instead of overlapping audio.
+  private playAudio(chunks: Int16Array[], onEnded: () => void) {
     if (this.currentSource) {
-      this.pendingPlayback = { chunks, onEnded, isFiller };
+      this.pendingPlayback = { chunks, onEnded };
       return;
     }
 
@@ -347,11 +298,7 @@ export class CallAdapter {
       return;
     }
 
-    // The filler tone means "still working", not "the agent is talking" --
-    // showing "Speaking" for it was misleading. "processing" (labeled
-    // "Waiting...") is what's already shown before the tone starts, so
-    // this just keeps that label instead of flipping it.
-    this.setStatus(isFiller ? "processing" : "speaking");
+    this.setStatus("speaking");
 
     const merged = new Int16Array(totalLength);
     let offset = 0;
@@ -383,9 +330,9 @@ export class CallAdapter {
 
   private playNextPending() {
     if (!this.pendingPlayback) return;
-    const { chunks, onEnded, isFiller } = this.pendingPlayback;
+    const { chunks, onEnded } = this.pendingPlayback;
     this.pendingPlayback = null;
-    this.playAudio(chunks, onEnded, isFiller);
+    this.playAudio(chunks, onEnded);
   }
 
   private resumeListening() {

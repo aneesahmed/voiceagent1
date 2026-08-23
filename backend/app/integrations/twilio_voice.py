@@ -178,21 +178,18 @@ async def media_stream(ws: WebSocket):
         await ws.send_text(json.dumps({"event": "media", "streamSid": stream_sid, "media": {"payload": payload}}))
 
     async def send_event(event: dict) -> None:
-        # send_frame streams a whole clip's frames to Twilio near-instantly
+        # send_frame streams a whole reply's frames to Twilio near-instantly
         # (no real-time pacing server-side, see call_engine._stream_audio) --
         # Twilio buffers and plays them back at real speed regardless of
-        # whether our server has since moved on. Without an explicit
-        # "clear" event, Twilio has no way to know we want it to stop
-        # playing what it already received: a caller would sit through the
-        # *entire* filler tone even once the real reply was ready, and
-        # barge-in would only stop us sending *more* audio, not stop what
-        # Twilio was already playing. "clear" is Twilio's Media Streams
-        # mechanism for exactly this -- discards any buffered/unplayed
-        # audio for this stream immediately. Mirrors what the browser
-        # transport gets for free via CallAdapter.ts's playingFiller flag +
-        # AudioBufferSourceNode.stop() (CLAUDE.md decision #28).
+        # whether our server has since moved on. On a genuine barge-in,
+        # our server stops sending *more* frames, but without an explicit
+        # "clear" event Twilio would keep playing whatever it had already
+        # buffered. "clear" is Twilio's Media Streams mechanism for
+        # exactly this -- discards any buffered/unplayed audio for this
+        # stream immediately, so the caller's interruption actually cuts
+        # the agent off instead of talking over a few more seconds of it.
         logger.info("[%s] turn event: %s", call_id, event)
-        if event.get("event") in ("filler_stop", "interrupted") and stream_sid is not None:
+        if event.get("event") == "interrupted" and stream_sid is not None:
             await ws.send_text(json.dumps({"event": "clear", "streamSid": stream_sid}))
         if event.get("event") == "call_ended_by_agent":
             await ws.close(code=1000)

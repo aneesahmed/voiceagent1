@@ -13,7 +13,6 @@ from typing import Awaitable, Callable
 
 from app.chat_engine import ChatEngine
 from app.config import settings
-from app.filler_audio import get_filler_audio, get_opening_filler_audio
 from app.stt import transcribe
 from app.tts import synthesize
 
@@ -27,9 +26,8 @@ SendEvent = Callable[[dict], Awaitable[None]]
 
 async def _stream_audio(audio_bytes: bytes, send_frame: SendFrame, interrupt_event: asyncio.Event) -> bool:
     """Streams pre-synthesized PCM audio out in FRAME_SIZE chunks, checking
-    interrupt_event and yielding between every frame -- same pattern used
-    for both the filler line and the real reply. Returns False (and stops
-    early, mid-frame) if interrupted."""
+    interrupt_event and yielding between every frame. Returns False (and
+    stops early, mid-frame) if interrupted."""
     for i in range(0, len(audio_bytes), FRAME_SIZE):
         if interrupt_event.is_set():
             return False
@@ -68,28 +66,13 @@ async def greet(
     (the existing turn_task-in-flight check handles that for free, no
     special-casing needed at the call site).
 
-    Mirrors process_turn's filler-then-real-content shape (see CLAUDE.md
-    decision #27): a cached, zero-latency opening line plays instantly on
-    connect -- no Gemini call involved at all -- while the LLM generates
-    and TTS synthesizes the real greeting in the background, which then
-    plays as soon as it's ready. Without this, the caller sat in dead air
-    for however long the LLM+TTS round trip took (often several seconds)
-    before hearing anything at all."""
+    No filler/hold-music cue -- that was removed (see CLAUDE.md decision
+    #34) after it caused real problems on Twilio calls, so the caller just
+    waits through the LLM+TTS round trip in silence before hearing the
+    greeting. Simpler and more reliable than the filler mechanism it
+    replaced, at the cost of a few seconds of dead air on a slow turn."""
     logger.info("[%s] ===== TURN %d (greeting) =====", call_id, turn_index)
     try:
-        opening_audio = get_opening_filler_audio()
-        logger.info("[%s] streaming opening filler audio (%d bytes)", call_id, len(opening_audio))
-        await send_event({"event": "filler_start"})
-        if not await _stream_audio(opening_audio, send_frame, interrupt_event):
-            logger.info("[%s] interrupted during opening filler", call_id)
-            await send_event({"event": "interrupted"})
-            return
-        await send_event({"event": "filler_end"})
-
-        if interrupt_event.is_set():
-            logger.info("[%s] interrupted before greeting generation", call_id)
-            return
-
         greeting = await asyncio.to_thread(engine.generate_greeting)
         logger.info("[%s] greeting: %r (end_call=%s)", call_id, greeting.text, greeting.end_call)
 
@@ -103,15 +86,6 @@ async def greet(
         if interrupt_event.is_set():
             logger.info("[%s] interrupted before greeting playback", call_id)
             return
-
-        # The opening tone is long enough to safely cover slow LLM+TTS
-        # latency, but the client already started playing it in full the
-        # instant it arrived (see CLAUDE.md decision #28) -- without this,
-        # a caller would have to sit through the *entire* tone even when
-        # the real greeting was ready much sooner. This tells the client
-        # to cut the tone short right now, exactly like hold music
-        # stopping the moment an agent picks up.
-        await send_event({"event": "filler_stop"})
 
         if not await _stream_audio(greeting_audio, send_frame, interrupt_event):
             logger.info("[%s] interrupted mid-greeting-stream", call_id)
@@ -163,23 +137,7 @@ async def process_turn(
         await send_event({"event": "transcript", "text": heard})
 
         if interrupt_event.is_set():
-            logger.info("[%s] interrupted before filler/reply generation", call_id)
-            return
-
-        # Play a cached "one moment..." line while the slow parts (LLM
-        # reply + speech synthesis) run, so the caller hears something
-        # within a frame or two instead of dead air for 1-3s.
-        filler_audio = get_filler_audio()
-        logger.info("[%s] streaming filler audio (%d bytes)", call_id, len(filler_audio))
-        await send_event({"event": "filler_start"})
-        if not await _stream_audio(filler_audio, send_frame, interrupt_event):
-            logger.info("[%s] interrupted during filler audio", call_id)
-            await send_event({"event": "interrupted"})
-            return
-        await send_event({"event": "filler_end"})
-
-        if interrupt_event.is_set():
-            logger.info("[%s] interrupted before synthesis", call_id)
+            logger.info("[%s] interrupted before reply generation", call_id)
             return
 
         reply = await asyncio.to_thread(engine.generate_reply, heard)
@@ -195,11 +153,6 @@ async def process_turn(
         if interrupt_event.is_set():
             logger.info("[%s] interrupted before reply playback", call_id)
             return
-
-        # See the matching comment in greet() -- cuts the filler tone
-        # short right now instead of making the caller wait out its full
-        # length regardless of how fast the real reply was ready.
-        await send_event({"event": "filler_stop"})
 
         if not await _stream_audio(reply_audio, send_frame, interrupt_event):
             logger.info("[%s] interrupted mid-reply-stream", call_id)
