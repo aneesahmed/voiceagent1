@@ -989,6 +989,45 @@ voiceagent/
       to reproduce Twilio's real-phone path locally (needs a public
       tunnel; no `cloudflared` binary was present in this environment).
 
+36. **A caller's short, quiet "yes" never registered as speech at all on
+    Twilio -- `SILENCE_RMS_THRESHOLD` was overcorrected in decision #31
+    (2026-08-23).** Diagnosed the same way as decision #35: from a real
+    Railway deploy log, this time notable for what was *missing* -- zero
+    log activity at all after the agent's "Is all of that correct?"
+    question, confirmed by the user as the actual end of the log. No
+    `TURN` line, no `caller said`, nothing -- meaning `twilio_voice.py`'s
+    server-side RMS detection never even registered the caller's response
+    as speech, so `process_turn` was never invoked. Different failure mode
+    from decision #35 (that was a crash after detection succeeded; this
+    is detection never firing at all).
+    - Root cause: decision #31 raised `SILENCE_RMS_THRESHOLD` from ~655
+      (the browser-mic equivalent) to 900, specifically to reject phone-
+      line noise clicks/pops -- but it *also* added
+      `SPEECH_START_DURATION_S` (sustained-activity gate) in that same
+      change, which already rejects isolated clicks on its own (a single-
+      frame spike can't sustain above any reasonable threshold for a fifth
+      of a second). Raising the threshold *and* adding the duration gate
+      was very likely overcorrecting for the same problem twice -- and a
+      short, quiet word like "yes" apparently never crosses 900 at all on
+      real phone audio, not just briefly dips below it.
+    - Fix: `SILENCE_RMS_THRESHOLD` eased 900 -> 700, `SPEECH_START_DURATION_S`
+      eased 0.2s -> 0.15s, leaning on the duration gate (not just the
+      threshold) to keep rejecting instant clicks/pops.
+    - Verified directly against a local server: a synthetic Twilio media-
+      stream connection sending a short (~350ms) burst well above the new
+      threshold correctly triggered a turn (`TURN 1`, transcribed "uh")
+      once the greeting's `turn_task` had actually finished -- confirming
+      the detection pipeline itself has no logic regression. Could not
+      synthetically reproduce the caller's exact real-world "yes" RMS to
+      prove the precise old-vs-new boundary, but the diagnosis (zero
+      server-side activity under the old threshold) is solid on its own.
+    - If short confirmations ("yes"/"no") are still getting missed after
+      this, the next place to look is real RMS values from a live call's
+      audio (not guessed/synthetic) -- there's currently no logging of
+      the actual RMS seen per frame, only the pass/fail outcome, so a
+      borderline-but-still-failing case would be invisible without adding
+      that temporarily.
+
 ## Environment / config
 
 `backend/.env` (gitignored, copy from `.env.example`):

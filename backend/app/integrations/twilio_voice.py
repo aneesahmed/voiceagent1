@@ -98,7 +98,17 @@ def _pcm16_rms(pcm_bytes: bytes) -> float:
 # from that browser-mic value for real phone audio specifically, which has
 # a genuinely higher noise floor (mu-law quantization noise, carrier-
 # injected comfort noise, line static) than a clean digital mic input.
-SILENCE_RMS_THRESHOLD = 900
+#
+# Caught live on a real call (2026-08-23, CLAUDE.md decision #36): 900 was
+# an overcorrection -- a caller's short, quiet "yes" never crossed it at
+# all, so the turn never even triggered server-side (confirmed via a
+# Railway deploy log with zero activity after the agent's question -- not
+# a crash, the caller's speech was simply never detected). Eased back down;
+# SPEECH_START_DURATION_S below already rejects isolated clicks/pops on
+# its own (they can't sustain continuously above ANY reasonable threshold
+# for a fifth of a second), so the threshold doesn't need to do that job
+# too on top of the duration gate.
+SILENCE_RMS_THRESHOLD = 700
 SILENCE_DURATION_S = 1.0
 BARGE_IN_DURATION_S = 0.3
 # How long RMS must stay ABOVE threshold before we commit to "the caller
@@ -107,7 +117,7 @@ BARGE_IN_DURATION_S = 0.3
 # single loud frame -- a click, a pop, a brief line noise spike -- used to
 # flip has_spoken=True immediately, which could turn into a whole
 # unwanted turn once things went quiet again for SILENCE_DURATION_S).
-SPEECH_START_DURATION_S = 0.2
+SPEECH_START_DURATION_S = 0.15
 
 
 # --- TwiML webhook -------------------------------------------------------
