@@ -944,6 +944,51 @@ voiceagent/
       filler mechanism it replaces, at the cost of losing the "something
       is happening" cue during a slow turn.
 
+35. **Root-caused a real Twilio call that went silent for 2+ minutes:
+    `tts.py` crashed on an unguarded `None` response and the caller heard
+    nothing, with no fallback (2026-08-23).** Diagnosed directly from a
+    pasted Railway deploy log covering the actual failing call (not
+    reproduced synthetically) -- initially suspected as a Railway or
+    Twilio infrastructure problem, but the log showed the real cause:
+    `AttributeError: 'NoneType' object has no attribute 'parts'` at
+    `tts.py`'s `response.candidates[0].content.parts[0].inline_data.data`.
+    Gemini TTS occasionally returns a candidate with `content=None`
+    entirely (an unusual `finish_reason`, not an API error -- so no
+    exception from the SDK call itself) -- this is the same class of
+    flakiness already guarded against on the chat/reply path
+    (`chat_engine.py`'s `parts = candidate_content.parts or []`, decision
+    #30), but that fix never made it to the TTS synthesis path. When it
+    hit, the whole turn's `try/except` in `call_engine.py` caught the
+    crash and logged `{"event": "error"}` -- which Twilio's transport has
+    no way to surface to the caller (no fallback TwiML `<Say>`) -- so the
+    caller just sat in total silence. The retry that happened naturally
+    on the *next* turn succeeded, confirming this is transient rather than
+    a persistent problem with the given text.
+    - `tts.py`'s `_synthesize_uncached()` now retries up to 3 attempts
+      when a response comes back with no usable audio content (empty
+      `candidates`, `None` `content`, or empty `parts`), logging the
+      `finish_reason` each time it happens; only raises after all
+      attempts are exhausted.
+    - `stt.py`'s `transcribe()` got the same class of guard (its
+      `response.text` convenience property walks the same
+      `candidates[0].content.parts` path internally) -- wrapped in
+      `try/except AttributeError`, treated the same as genuine
+      silence/no-speech (returns `""`) rather than crashing the turn.
+    - The cascading confusion in that real call (agent re-asking to
+      confirm the caller's number, asking for the phone number cold after
+      "No", the caller talking into apparent silence) all traced back to
+      this single crash on the greeting's TTS call -- everything else in
+      the transcript/reply/ANI-confirmation logic was behaving correctly
+      given what the model's conversation history actually contained; the
+      caller just never got to hear most of it.
+    - Lesson for next time: when something looks like infra flakiness
+      (Railway/Twilio), check for a real Railway deploy log covering the
+      actual failing call before reaching for tunnel/local-repro tooling
+      -- the exact traceback was sitting right there and pinpointed the
+      bug in under a minute once available, versus significant setup cost
+      to reproduce Twilio's real-phone path locally (needs a public
+      tunnel; no `cloudflared` binary was present in this environment).
+
 ## Environment / config
 
 `backend/.env` (gitignored, copy from `.env.example`):

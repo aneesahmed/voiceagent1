@@ -35,4 +35,12 @@ def transcribe(pcm_bytes: bytes) -> str:
             "If there is no clear speech, reply with an empty string.",
         ],
     )
-    return (response.text or "").strip()
+    try:
+        return (response.text or "").strip()
+    except AttributeError:
+        # Same class of Gemini flakiness as tts.py's _synthesize_uncached
+        # (see CLAUDE.md decision #35) -- an unusual finish_reason can leave
+        # candidates[0].content as None, and .text walks straight into it.
+        # Treated the same as genuine silence/no-speech rather than
+        # crashing the whole turn.
+        return ""

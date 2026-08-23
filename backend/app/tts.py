@@ -42,23 +42,51 @@ def _resample_24k_to_8k(pcm16_bytes: bytes) -> bytes:
     return struct.pack(f"<{len(out)}h", *out)
 
 
+_MAX_ATTEMPTS = 3  # Gemini TTS occasionally returns a candidate with no
+# content at all (finish_reason other than STOP -- e.g. a transient safety
+# flag or empty generation) instead of raising an API error. Caught live on
+# a real Twilio call: candidates[0].content was None, which crashed the
+# whole turn (AttributeError) and left the caller in total silence -- no
+# fallback, no retry. A same-text retry succeeded moments later on the very
+# next turn, suggesting this is transient rather than a persistent problem
+# with the input text, so retrying a couple of times here is worth it
+# before giving up. Mirrors the defensive parts-can-be-None guard already
+# applied to the chat/reply path (chat_engine.py, CLAUDE.md decision #30) --
+# this is the same class of Gemini flakiness, just on the TTS call instead.
+
+
 def _synthesize_uncached(text: str) -> bytes:
-    response = get_client().models.generate_content(
-        model=settings.TTS_MODEL,
-        contents=text,
-        config=types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name=settings.TTS_VOICE
+    last_error: Exception | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        response = get_client().models.generate_content(
+            model=settings.TTS_MODEL,
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=settings.TTS_VOICE
+                        )
                     )
-                )
+                ),
             ),
-        ),
-    )
-    pcm_24k = response.candidates[0].content.parts[0].inline_data.data
-    return _resample_24k_to_8k(pcm_24k)
+        )
+        candidates = response.candidates or []
+        content = candidates[0].content if candidates else None
+        parts = content.parts if content is not None else None
+        if parts:
+            pcm_24k = parts[0].inline_data.data
+            return _resample_24k_to_8k(pcm_24k)
+
+        finish_reason = candidates[0].finish_reason if candidates else None
+        logger.warning(
+            "TTS attempt %d/%d returned no audio content (finish_reason=%s) for text %r",
+            attempt, _MAX_ATTEMPTS, finish_reason, text,
+        )
+        last_error = RuntimeError(f"Gemini TTS returned no audio content (finish_reason={finish_reason})")
+
+    raise last_error
 
 
 def synthesize(text: str) -> bytes:
