@@ -29,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from app.basic_auth_middleware import BasicAuthMiddleware
 from app.call_engine import greet, process_turn
 from app.chat_engine import ChatEngine
 from app.filler_audio import warm_cache as warm_filler_cache
@@ -75,6 +76,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# App-wide HTTP Basic Auth -- no-op unless BASIC_AUTH_USERNAME/PASSWORD are
+# both set in .env (see config.py). Added after CORS so it runs outermost
+# (Starlette wraps last-added middleware around everything else), rejecting
+# unauthenticated requests before they reach any route logic.
+app.add_middleware(BasicAuthMiddleware)
 
 
 # --- consistent { "data": ..., "error": ... } envelope for every error, per

@@ -28,6 +28,7 @@ PLACEHOLDERS: dict[str, str] = {
     "TWILIO_API_KEY_SID": "your twilio api key sid",
     "TWILIO_API_KEY_SECRET": "your twilio api key secret",
     "TWILIO_PHONE_NUMBER": "your twilio phone number",
+    "BASIC_AUTH_PASSWORD": "your basic auth password",
 }
 
 
@@ -82,6 +83,18 @@ class Settings:
     WHATSAPP_ACCESS_TOKEN: str = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
     WHATSAPP_PHONE_NUMBER_ID: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
     WHATSAPP_VERIFY_TOKEN: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
+
+    # -- App-wide HTTP Basic Auth -- optional, unset by default so existing
+    # local/dev setups keep working with zero config. When both are set,
+    # app/basic_auth_middleware.py requires this username/password on every
+    # request EXCEPT the handful of paths Twilio/Meta/Railway call directly
+    # and can't attach custom credentials to (see PUBLIC_PATHS there).
+    BASIC_AUTH_USERNAME: str = os.getenv("BASIC_AUTH_USERNAME", "")
+    BASIC_AUTH_PASSWORD: str = _env("BASIC_AUTH_PASSWORD")
+
+    @property
+    def basic_auth_enabled(self) -> bool:
+        return bool(self.BASIC_AUTH_USERNAME and self.BASIC_AUTH_PASSWORD)
 
     @property
     def twilio_configured(self) -> bool:

@@ -845,6 +845,53 @@ voiceagent/
       "Deploying" section was reworded from Cloud-Run-specific to
       platform-general, with Railway now the concretely documented case.
 
+33. **App-wide HTTP Basic Auth, opt-in via `.env`, gating everything except
+    the Twilio/WhatsApp webhook endpoints (2026-08-23).** Once a real
+    Twilio account and Gemini billing were wired up, the live Railway URL
+    became a real cost/abuse surface -- `/settings-ui` alone exposes
+    credential previews, `/audio` and `/twilio/access-token` can rack up
+    real Gemini/Twilio charges, and none of it required a login.
+    - `app/basic_auth_middleware.py` -- a raw ASGI middleware (not
+      Starlette's `BaseHTTPMiddleware`, which can't see WebSocket
+      handshakes) checked via `app.add_middleware()` in `main.py`, added
+      after `CORSMiddleware` so it becomes outermost and rejects
+      unauthenticated requests before any route logic runs. No-ops
+      entirely (open access, current behavior unchanged) unless *both*
+      `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` are set --
+      `config.py`'s `basic_auth_enabled` property, same "unconfigured
+      degrades gracefully" pattern as Twilio/WhatsApp (decision #15).
+      `BASIC_AUTH_PASSWORD` uses the same placeholder-on-clear convention
+      as decision #24's `PLACEHOLDERS` dict.
+    - `PUBLIC_PATHS` is a small explicit allowlist -- `/health` (Railway's
+      own healthcheck), `/twilio/voice`, `/twilio/media-stream`,
+      `/twilio/browser-call-voice`, `/whatsapp/webhook` -- since Twilio's
+      and Meta's servers call these directly and have no way to attach a
+      username/password. Everything else (landing/settings/web-testing/
+      twilio-test pages, `/personas`, `/chat`, `/kb/*`, `/patients/*`,
+      `/settings`, the `/audio` websocket, and `/twilio/access-token`) now
+      requires auth. Credentials check via `hmac.compare_digest` (timing-
+      attack-safe), not a plain `==`.
+    - WebSocket handling required care: the middleware inspects
+      `scope["headers"]` directly (already present pre-handshake, no need
+      to call `receive()` first) to decide whether to authorize:
+      unauthorized closes with `{"type": "websocket.close"}` (after
+      consuming the pending `"websocket.connect"` event, per ASGI spec),
+      which surfaces to the client as a clean handshake-level rejection
+      (verified: 403 on the WebSocket upgrade itself, not an app-level
+      error after connecting) -- not a special code path in `main.py`'s
+      `audio_ws` handler.
+    - Verified directly: unauthenticated `curl` against `/` and `/chat`
+      both 401 with a `WWW-Authenticate: Basic` header; correct
+      credentials 200; `/health` and `/twilio/voice` stay 200 with zero
+      credentials either way; an unauthenticated raw `/audio` WebSocket
+      connect attempt fails at the handshake (403) while one with a
+      correct `Authorization` header connects and receives the greeting
+      normally.
+    - Not yet done: `BASIC_AUTH_USERNAME`/`BASIC_AUTH_PASSWORD` need
+      adding to Railway's Variables tab (same gap pattern as decision
+      #32's `TWILIO_TWIML_APP_SID` -- a value only in the local `.env`
+      does not exist on Railway until added there manually).
+
 ## Environment / config
 
 `backend/.env` (gitignored, copy from `.env.example`):
