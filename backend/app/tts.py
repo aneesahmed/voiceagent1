@@ -63,6 +63,7 @@ def _synthesize_uncached(text: str) -> bytes:
             contents=text,
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
+                system_instruction="You are a Text-to-Speech engine. Output only the spoken audio for the exact text provided. Do not reply with text.",
                 speech_config=types.SpeechConfig(
                     voice_config=types.VoiceConfig(
                         prebuilt_voice_config=types.PrebuiltVoiceConfig(
