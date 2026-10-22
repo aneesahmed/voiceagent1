@@ -289,3 +289,11 @@ async def audio_ws(ws: WebSocket):
         if turn_task is not None and not turn_task.done():
             turn_task.cancel()
         logger.info("[%s] call ended", call_id)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    from app.config import settings
+
+    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=True)
+

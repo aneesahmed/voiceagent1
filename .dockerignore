@@ -1,0 +1,9 @@
+.git
+.github
+.idea
+.claude
+backend/.env
+backend/.venv
+backend/**/__pycache__
+frontend/node_modules
+*.log
